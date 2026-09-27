@@ -21,11 +21,12 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: 使用仓库根目录清单编译 rsrc.syso
+      - name: 使用仓库根目录清单编译 rsrc.syso (指定 64 位架构)
         run: |
           go install github.com/akavel/rsrc@latest
           $GOPATH = go env GOPATH
-          & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -o rsrc.syso
+          # 核心修复：显式指定 -arch amd64，避免默认回退到 386 架构
+          & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -arch amd64 -o rsrc.syso
 
       - name: 整理依赖
         run: |
