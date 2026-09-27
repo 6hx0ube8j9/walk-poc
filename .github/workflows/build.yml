@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
-          cache: false # 网页端无 go.sum 时避免缓存校验报错
+          cache: false
 
       - name: 自动生成 Manifest 并编译 rsrc.syso
         run: |
