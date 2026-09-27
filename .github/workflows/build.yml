@@ -19,19 +19,44 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
-          cache: true
+          cache: false # 网页端无 go.sum 时避免缓存校验报错
 
-      - name: 下载依赖
+      - name: 自动生成 Manifest 并编译 rsrc.syso
         run: |
+          # 1. 自动写入 Win32 原生 Common Controls 6.0 清单
+          @"
+          <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+              <assemblyIdentity version="1.0.0.0" processorArchitecture="*" name="WalkPOC" type="win32"/>
+              <dependency>
+                  <dependentAssembly>
+                      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+                  </dependentAssembly>
+              </dependency>
+          </assembly>
+          "@ | Out-File -FilePath app.manifest -Encoding utf8
+
+          # 2. 安装 rsrc 工具并编译 syso 资源文件
+          go install github.com/akavel/rsrc@latest
+          $GOPATH = go env GOPATH
+          & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -o rsrc.syso
+
+      - name: 解析模块依赖
+        run: |
+          if (-not (Test-Path "go.mod")) {
+            go mod init walk-poc
+          }
+          go get github.com/lxn/walk
           go mod tidy
 
-      - name: 编译可执行文件 (保留终端输出)
+      - name: 编译可执行程序
         run: |
+          # 保留控制台输出，便于观察窗口事件日志
           go build -v -o walk-poc.exe .
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: walk-poc-lxn-windows-amd64
+          name: walk-poc-windows-amd64
           path: walk-poc.exe
           if-no-files-found: error
