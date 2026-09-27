@@ -1,4 +1,4 @@
-name: Build Walk POC
+name: Build Walk POC (lxn upstream)
 
 on:
   push:
@@ -25,13 +25,13 @@ jobs:
         run: |
           go mod tidy
 
-      - name: 编译可执行文件 (保留控制台便于观察日志)
+      - name: 编译可执行文件 (保留终端输出)
         run: |
           go build -v -o walk-poc.exe .
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: walk-poc-windows-amd64
+          name: walk-poc-lxn-windows-amd64
           path: walk-poc.exe
           if-no-files-found: error
