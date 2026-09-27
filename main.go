@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"runtime/debug"
 
 	"github.com/tailscale/walk"
 	. "github.com/tailscale/walk/declarative"
@@ -17,52 +16,39 @@ func main() {
 		log.SetOutput(io.MultiWriter(os.Stdout, logFile))
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[FATAL PANIC] 异常崩溃: %v\n%s", r, debug.Stack())
-		}
-		log.Println("[App] 进程完全退出")
-	}()
-
 	var mw *walk.MainWindow
 	var ni *walk.NotifyIcon
 	var isExiting bool
 
-	// 1. 创建主窗口 (不调用 walk.InitApp)
+	// tailscale/walk 必须使用 InitApp 初始化
+	app, err := walk.InitApp()
+	if err != nil {
+		log.Fatalf("初始化 Walk App 失败: %v", err)
+	}
+
 	err = MainWindow{
 		AssignTo: &mw,
-		Title:    "Tailscale Walk 生命周期测试 (mw.Run 模式)",
+		Title:    "Tailscale Walk 生命周期测试",
 		MinSize:  Size{Width: 400, Height: 240},
 		Size:     Size{Width: 460, Height: 280},
 		Layout:   VBox{Margins: Margins{Left: 20, Top: 20, Right: 20, Bottom: 20}, Spacing: 12},
 		Children: []Widget{
-			Label{
-				Text: "测试验证：\n点击右上角 [X]，验证 mw.Run() 模式下是否还会被强制杀死。",
-			},
+			Label{Text: "测试窗口生命周期"},
 		},
 	}.Create()
 	if err != nil {
 		log.Fatalf("创建窗口失败: %v", err)
 	}
 
-	// 2. 原生 Closing 拦截
 	mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
 		log.Printf("[Event] Closing 触发: isExiting=%v", isExiting)
 		if !isExiting {
 			*canceled = true
 			mw.SetVisible(false)
-			log.Println("[Event] 窗口已隐藏，拦截成功")
-		} else {
-			log.Println("[Event] 放行退出")
+			log.Println("[Event] 已将 *canceled 置为 true 并 SetVisible(false)")
 		}
 	})
 
-	// 监控窗口是否真的被 Win32 底层销毁
-	mw.Disposing().Attach(func() {
-		log.Println("[Event] 警告: MainWindow 句柄正在被销毁 (Disposed)")
-	})
-
-	// 3. 创建托盘图标 (tailscale/walk 原生支持无参数调用)
 	ni, err = walk.NewNotifyIcon()
 	if err != nil {
 		log.Fatalf("创建托盘失败: %v", err)
@@ -75,7 +61,6 @@ func main() {
 
 	ni.MouseUp().Attach(func(x, y int, button walk.MouseButton) {
 		if button == walk.LeftButton {
-			log.Println("[Tray] 左键点击，恢复窗口")
 			if !mw.Visible() {
 				mw.Show()
 			}
@@ -86,15 +71,14 @@ func main() {
 	exitAction := walk.NewAction()
 	exitAction.SetText("彻底退出")
 	exitAction.Triggered().Attach(func() {
-		log.Println("[Tray] 用户点击退出")
 		isExiting = true
 		mw.Close()
 	})
 	ni.ContextMenu().Actions().Add(exitAction)
 
-	// 4. 显示窗口并使用 mw.Run() 进入消息循环
 	mw.Show()
-	log.Println("[App] 进入 mw.Run() 消息循环")
-	exitCode := mw.Run()
-	log.Printf("[App] mw.Run() 循环退出，退出码: %d", exitCode)
+	log.Println("[App] 进入 app.Run() 消息循环")
+	// tailscale/walk 唯一的合法入口
+	exitCode := app.Run()
+	log.Printf("[App] app.Run() 退出，退出码: %d", exitCode)
 }
