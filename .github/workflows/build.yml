@@ -27,19 +27,29 @@ jobs:
           $GOPATH = go env GOPATH
           & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -arch amd64 -o rsrc.syso
 
-      - name: 重建模块与依赖劫持
+      - name: 动态解析并劫持精准依赖
         run: |
-          # 删掉所有可能残留的旧版 mod 文件
           Remove-Item -Force -ErrorAction SilentlyContinue go.mod, go.sum
-          
-          # 重新初始化模块
           go mod init walk-poc
           
-          # 双管齐下：把 walk 和 win 的底层全盘替换为 Tailscale 的最新 master
+          # 1. 将 walk 劫持到 Tailscale 最新版 (Tailscale 的 walk 仓库主分支仍叫 master)
           go mod edit -replace github.com/lxn/walk=github.com/tailscale/walk@master
-          go mod edit -replace github.com/lxn/win=github.com/tailscale/win@master
           
-          # 拉取原版代码，但实际上会被自动导向 Tailscale 分支
+          # 2. 动态读取 Tailscale 的 go.mod，提取他们真实使用的 win 库哈希版本！
+          $tsMod = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/tailscale/walk/master/go.mod"
+          Write-Host "Tailscale 官方 go.mod 解析中..."
+          
+          # 匹配他们 go.mod 里的 replace github.com/lxn/win => xxxx v0.0.0-xxxx
+          if ($tsMod -match 'github\.com/lxn/win\s*=>\s*([^\s]+)\s+([^\s\)]+)') {
+              $winRepo = $matches[1]
+              $winVer = $matches[2]
+              Write-Host "成功捕获底层劫持: lxn/win => $winRepo @ $winVer"
+              go mod edit -replace "github.com/lxn/win=${winRepo}@${winVer}"
+          } else {
+              Write-Host "警告: 未匹配到，回退使用 main 分支"
+              go mod edit -replace github.com/lxn/win=github.com/tailscale/win@main
+          }
+          
           go get github.com/lxn/walk
           go mod tidy
 
