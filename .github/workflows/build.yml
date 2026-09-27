@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
-          cache: false # 关闭缓存，强制每次拉取 master 最新代码
+          cache: false 
 
       - name: 编译 rsrc.syso (AMD64 架构)
         run: |
@@ -27,10 +27,13 @@ jobs:
           $GOPATH = go env GOPATH
           & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -arch amd64 -o rsrc.syso
 
-      - name: 切换至 tailscale/walk 最新主分支
+      - name: 切换至 tailscale/walk 最新主分支并修复依赖
         run: |
-          # 强制拉取最新重构后的 master 版本
           go get github.com/tailscale/walk@master
+          
+          # 核心修复：强行接管底层 win 依赖，指向 Tailscale 的魔改分支
+          go mod edit -replace github.com/lxn/win=github.com/tailscale/win@master
+          
           go mod tidy
 
       - name: 编译可执行程序
