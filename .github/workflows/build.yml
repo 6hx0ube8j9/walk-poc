@@ -1,4 +1,4 @@
-name: Build Walk POC (lxn upstream)
+name: Build Walk POC (tailscale)
 
 on:
   push:
@@ -21,15 +21,15 @@ jobs:
           go-version: 'stable'
           cache: true
 
-      - name: 使用仓库根目录清单编译 rsrc.syso (指定 64 位架构)
+      - name: 使用仓库清单编译 rsrc.syso (AMD64 架构)
         run: |
           go install github.com/akavel/rsrc@latest
           $GOPATH = go env GOPATH
-          # 核心修复：显式指定 -arch amd64，避免默认回退到 386 架构
           & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -arch amd64 -o rsrc.syso
 
-      - name: 整理依赖
+      - name: 切换依赖至 tailscale/walk 并整理
         run: |
+          go get github.com/tailscale/walk
           go mod tidy
 
       - name: 编译可执行程序
@@ -39,6 +39,6 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: walk-poc-lxn-windows-amd64
+          name: walk-poc-tailscale-windows-amd64
           path: walk-poc.exe
           if-no-files-found: error
