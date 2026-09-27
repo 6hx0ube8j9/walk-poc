@@ -1,0 +1,37 @@
+name: Build Walk POC
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: true
+
+      - name: 下载依赖
+        run: |
+          go mod tidy
+
+      - name: 编译可执行文件 (保留控制台便于观察日志)
+        run: |
+          go build -v -o walk-poc.exe .
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-poc-windows-amd64
+          path: walk-poc.exe
+          if-no-files-found: error
