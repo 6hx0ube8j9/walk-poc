@@ -1,4 +1,4 @@
-name: Build Walk POC (tailscale df8c773)
+name: Build Walk POC (tailscale latest)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
-          cache: false # 必须关闭缓存，防止复用新版模块缓存
+          cache: false # 关闭缓存，强制每次拉取 master 最新代码
 
       - name: 编译 rsrc.syso (AMD64 架构)
         run: |
@@ -27,9 +27,10 @@ jobs:
           $GOPATH = go env GOPATH
           & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -arch amd64 -o rsrc.syso
 
-      - name: 锁定并拉取 2022 年 12 月 10 日提交 (df8c773)
+      - name: 切换至 tailscale/walk 最新主分支
         run: |
-          go get github.com/tailscale/walk@df8c773
+          # 强制拉取最新重构后的 master 版本
+          go get github.com/tailscale/walk@master
           go mod tidy
 
       - name: 编译可执行程序
@@ -39,6 +40,6 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: walk-poc-df8c773-windows-amd64
+          name: walk-poc-tailscale-latest-windows-amd64
           path: walk-poc.exe
           if-no-files-found: error
