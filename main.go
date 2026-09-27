@@ -5,8 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/tailscale/walk"
-	. "github.com/tailscale/walk/declarative"
+	// 核心改变：代码层面全部使用 lxn 原版路径
+	"github.com/lxn/walk"
+	. "github.com/lxn/walk/declarative"
 )
 
 func main() {
@@ -18,11 +19,12 @@ func main() {
 	var ni *walk.NotifyIcon
 	var isExiting bool
 
+	// 因为有了 go.mod 的 replace，这里的 InitApp 实际上调用的是 tailscale 的代码
 	app, _ := walk.InitApp()
 
 	MainWindow{
 		AssignTo: &mw,
-		Title:    "Tailscale Walk 终极实力局",
+		Title:    "Tailscale Walk 终极实力局 (Replace模式)",
 		Size:     Size{Width: 460, Height: 280},
 		Layout:   VBox{},
 		Children: []Widget{
@@ -33,7 +35,6 @@ func main() {
 	// 1. 完全原版的拦截方式
 	mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
 		if !isExiting {
-			// 撤销销毁指令（保住窗口句柄不被摧毁）
 			*canceled = true
 			mw.SetVisible(false)
 			log.Println("[Event] [X] 拦截成功，窗口句柄存活，已安全隐藏")
@@ -60,13 +61,13 @@ func main() {
 	exitAction.Triggered().Attach(func() {
 		log.Println("[Tray] 用户主动退出")
 		isExiting = true
-		app.Exit(0) // 显式通知全局消息循环退出
+		app.Exit(0) 
 	})
 	ni.ContextMenu().Actions().Add(exitAction)
 
 	mw.Show()
 
-
+	// 2. 拿出实力：Win32 消息循环原地复活
 	for !isExiting {
 		log.Println("[App] (重)启动 app.Run() 消息循环...")
 		app.Run()
