@@ -11,7 +11,6 @@ import (
 )
 
 func main() {
-	// 1. 同时输出到终端和同级目录 walk-poc.log (防止窗口秒退丢日志)
 	logFile, err := os.OpenFile("walk-poc.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err == nil {
 		defer logFile.Close()
@@ -20,37 +19,25 @@ func main() {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[FATAL PANIC] 捕获到运行时崩溃: %v\n堆栈跟踪:\n%s", r, debug.Stack())
+			log.Printf("[FATAL PANIC] 异常崩溃: %v\n%s", r, debug.Stack())
 		}
-		log.Println("[App] main 函数生命周期结束，进程正式退出")
+		log.Println("[App] 进程完全退出")
 	}()
 
 	var mw *walk.MainWindow
 	var ni *walk.NotifyIcon
 	var isExiting bool
 
-	app, err := walk.InitApp()
-	if err != nil {
-		log.Fatalf("初始化 Walk App 失败: %v", err)
-	}
-
+	// 1. 创建主窗口 (不调用 walk.InitApp)
 	err = MainWindow{
 		AssignTo: &mw,
-		Title:    "Walk (tailscale 分支) 生命周期追踪",
+		Title:    "Tailscale Walk 生命周期测试 (mw.Run 模式)",
 		MinSize:  Size{Width: 400, Height: 240},
 		Size:     Size{Width: 460, Height: 280},
 		Layout:   VBox{Margins: Margins{Left: 20, Top: 20, Right: 20, Bottom: 20}, Spacing: 12},
 		Children: []Widget{
 			Label{
-				Text: "请直接点击右上角 [X] 测试关闭拦截。\n" +
-					"若窗口秒退，请直接查看同级目录生成的 walk-poc.log。",
-			},
-			PushButton{
-				Text: "测试代码调用 SetVisible(false)",
-				OnClicked: func() {
-					mw.SetVisible(false)
-					log.Println("[UI] 手动 SetVisible(false) 隐藏窗口成功")
-				},
+				Text: "测试验证：\n点击右上角 [X]，验证 mw.Run() 模式下是否还会被强制杀死。",
 			},
 		},
 	}.Create()
@@ -58,20 +45,24 @@ func main() {
 		log.Fatalf("创建窗口失败: %v", err)
 	}
 
-	// 核心拦截点：逐行埋点，观察执行到了哪一步
+	// 2. 原生 Closing 拦截
 	mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
-		log.Printf("[Event] Closing 事件已被触发! isExiting=%v, CloseReason=%d", isExiting, reason)
+		log.Printf("[Event] Closing 触发: isExiting=%v", isExiting)
 		if !isExiting {
 			*canceled = true
-			log.Println("[Event] 已将 *canceled 置为 true")
-			
 			mw.SetVisible(false)
-			log.Println("[Event] SetVisible(false) 调用完成，窗口理论上已隐藏")
+			log.Println("[Event] 窗口已隐藏，拦截成功")
 		} else {
-			log.Println("[Event] 检测到退出标志，放行窗口销毁流程")
+			log.Println("[Event] 放行退出")
 		}
 	})
 
+	// 监控窗口是否真的被 Win32 底层销毁
+	mw.Disposing().Attach(func() {
+		log.Println("[Event] 警告: MainWindow 句柄正在被销毁 (Disposed)")
+	})
+
+	// 3. 创建托盘图标 (tailscale/walk 原生支持无参数调用)
 	ni, err = walk.NewNotifyIcon()
 	if err != nil {
 		log.Fatalf("创建托盘失败: %v", err)
@@ -79,12 +70,12 @@ func main() {
 	defer ni.Dispose()
 
 	ni.SetIcon(walk.IconApplication())
-	ni.SetToolTip("Walk POC (tailscale 追踪模式)")
+	ni.SetToolTip("Tailscale POC")
 	ni.SetVisible(true)
 
 	ni.MouseUp().Attach(func(x, y int, button walk.MouseButton) {
 		if button == walk.LeftButton {
-			log.Println("[Tray] 左键点击托盘，尝试唤醒窗口")
+			log.Println("[Tray] 左键点击，恢复窗口")
 			if !mw.Visible() {
 				mw.Show()
 			}
@@ -95,14 +86,15 @@ func main() {
 	exitAction := walk.NewAction()
 	exitAction.SetText("彻底退出")
 	exitAction.Triggered().Attach(func() {
-		log.Println("[Tray] 菜单触发彻底退出")
+		log.Println("[Tray] 用户点击退出")
 		isExiting = true
 		mw.Close()
 	})
 	ni.ContextMenu().Actions().Add(exitAction)
 
+	// 4. 显示窗口并使用 mw.Run() 进入消息循环
 	mw.Show()
-	log.Println("[App] tailscale 分支 POC 已就绪，进入 app.Run() 消息循环")
-	exitCode := app.Run()
-	log.Printf("[App] app.Run() 消息循环退出，返回码: %d", exitCode)
+	log.Println("[App] 进入 mw.Run() 消息循环")
+	exitCode := mw.Run()
+	log.Printf("[App] mw.Run() 循环退出，退出码: %d", exitCode)
 }
