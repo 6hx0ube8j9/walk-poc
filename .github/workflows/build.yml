@@ -1,17 +1,4 @@
-name: Build Walk POC (tailscale replace hack)
-
-on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: windows-latest
-
-    steps:
+steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
@@ -21,35 +8,27 @@ jobs:
           go-version: 'stable'
           cache: false
 
-      - name: 编译 rsrc.syso (AMD64 架构)
+      - name: 编译 rsrc.syso
         run: |
           go install github.com/akavel/rsrc@latest
           $GOPATH = go env GOPATH
           & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -arch amd64 -o rsrc.syso
 
-      - name: 动态解析并劫持精准依赖
+      - name: 物理破解：本地拉取与源码劫持
         run: |
+          # 1. 简单粗暴：直接把 Tailscale 的最新 walk 和 win 源码物理克隆到旁边
+          git clone --depth=1 https://github.com/tailscale/walk.git tailscale-walk
+          git clone --depth=1 https://github.com/tailscale/win.git tailscale-win
+          
+          # 2. 清除历史包袱
           Remove-Item -Force -ErrorAction SilentlyContinue go.mod, go.sum
           go mod init walk-poc
           
-          # 1. 将 walk 劫持到 Tailscale 最新版 (Tailscale 的 walk 仓库主分支仍叫 master)
-          go mod edit -replace github.com/lxn/walk=github.com/tailscale/walk@master
+          # 3. 核心大招：路径劫持！告诉 Go 直接读本地文件夹，跳过所有网络依赖校验！
+          go mod edit -replace github.com/lxn/walk=./tailscale-walk
+          go mod edit -replace github.com/lxn/win=./tailscale-win
           
-          # 2. 动态读取 Tailscale 的 go.mod，提取他们真实使用的 win 库哈希版本！
-          $tsMod = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/tailscale/walk/master/go.mod"
-          Write-Host "Tailscale 官方 go.mod 解析中..."
-          
-          # 匹配他们 go.mod 里的 replace github.com/lxn/win => xxxx v0.0.0-xxxx
-          if ($tsMod -match 'github\.com/lxn/win\s*=>\s*([^\s]+)\s+([^\s\)]+)') {
-              $winRepo = $matches[1]
-              $winVer = $matches[2]
-              Write-Host "成功捕获底层劫持: lxn/win => $winRepo @ $winVer"
-              go mod edit -replace "github.com/lxn/win=${winRepo}@${winVer}"
-          } else {
-              Write-Host "警告: 未匹配到，回退使用 main 分支"
-              go mod edit -replace github.com/lxn/win=github.com/tailscale/win@main
-          }
-          
+          # 4. 整理依赖并编译
           go get github.com/lxn/walk
           go mod tidy
 
@@ -60,6 +39,6 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: walk-poc-tailscale-hacked-windows-amd64
+          name: walk-poc-tailscale-latest-local-hack
           path: walk-poc.exe
           if-no-files-found: error
