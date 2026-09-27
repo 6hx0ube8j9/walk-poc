@@ -1,4 +1,4 @@
-name: Build Walk POC (tailscale latest)
+name: Build Walk POC (tailscale replace hack)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: 'stable'
-          cache: false 
+          cache: false
 
       - name: 编译 rsrc.syso (AMD64 架构)
         run: |
@@ -27,13 +27,20 @@ jobs:
           $GOPATH = go env GOPATH
           & "$GOPATH\bin\rsrc.exe" -manifest app.manifest -arch amd64 -o rsrc.syso
 
-      - name: 切换至 tailscale/walk 最新主分支并修复依赖
+      - name: 重建模块与依赖劫持
         run: |
-          go get github.com/tailscale/walk@master
+          # 删掉所有可能残留的旧版 mod 文件
+          Remove-Item -Force -ErrorAction SilentlyContinue go.mod, go.sum
           
-          # 核心修复：强行接管底层 win 依赖，指向 Tailscale 的魔改分支
+          # 重新初始化模块
+          go mod init walk-poc
+          
+          # 双管齐下：把 walk 和 win 的底层全盘替换为 Tailscale 的最新 master
+          go mod edit -replace github.com/lxn/walk=github.com/tailscale/walk@master
           go mod edit -replace github.com/lxn/win=github.com/tailscale/win@master
           
+          # 拉取原版代码，但实际上会被自动导向 Tailscale 分支
+          go get github.com/lxn/walk
           go mod tidy
 
       - name: 编译可执行程序
@@ -43,6 +50,6 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: walk-poc-tailscale-latest-windows-amd64
+          name: walk-poc-tailscale-hacked-windows-amd64
           path: walk-poc.exe
           if-no-files-found: error
